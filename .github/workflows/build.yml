@@ -1,0 +1,55 @@
+name: Budowanie aplikacji (APK)
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # Konfiguracja Firebase z sekretu repozytorium (Settings → Secrets → Actions → GOOGLE_SERVICES_JSON).
+      # Bez sekretu aplikacja też się zbuduje, ale pokaże ekran "brak konfiguracji".
+      - name: Konfiguracja Firebase
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
+            echo "Użyto google-services.json z sekretów."
+          else
+            echo "::warning::Brak sekretu GOOGLE_SERVICES_JSON - aplikacja nie połączy się z Firebase."
+          fi
+
+      - name: Budowanie
+        run: ./gradlew --no-daemon assembleRelease
+
+      - name: Nazwa pliku
+        run: cp app/build/outputs/apk/release/app-release.apk PomocDrogowa-1.0.${{ github.run_number }}.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PomocDrogowa-APK
+          path: PomocDrogowa-*.apk
+
+      # Każda wersja z gałęzi main trafia do zakładki Releases - stamtąd najłatwiej pobrać APK na telefon.
+      - name: Publikacja w Releases
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Pomoc Drogowa 1.0.${{ github.run_number }}
+          files: PomocDrogowa-*.apk

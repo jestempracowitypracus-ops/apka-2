@@ -1,0 +1,11 @@
+.gradle/
+build/
+/local.properties
+.idea/
+*.iml
+.DS_Store
+captures/
+.kotlin/
+# Konfiguracja Firebase - trzymana poza repozytorium (sekret w GitHub Actions)
+app/google-services.json
+firebase/functions/node_modules/

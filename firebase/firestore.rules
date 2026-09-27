@@ -1,0 +1,79 @@
+rules_version = '2';
+
+// Reguły bezpieczeństwa bazy zleceń.
+// - dyspozytor widzi i zarządza wszystkim,
+// - kierowca widzi tylko przydzielone mu zlecenia i może w nich pisać
+//   (komentarze, zdjęcia, głosówki, dane) oraz zmieniać status.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+    function profile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    function isActive() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && profile().active == true;
+    }
+    function isDispatcher() {
+      return isActive() && profile().role == 'dispatcher';
+    }
+
+    // Znacznik, że pierwsze konto dyspozytora zostało już założone.
+    match /config/setup {
+      allow read: if true;
+      allow create: if signedIn()
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'dispatcher';
+      allow update, delete: if false;
+    }
+
+    // Licznik numerów zleceń.
+    match /config/counters {
+      allow read, write: if isDispatcher();
+    }
+
+    match /users/{uid} {
+      allow read: if isActive();
+      allow create: if isDispatcher()
+        // Pierwsze uruchomienie: ktoś zakłada konto dyspozytora, gdy jeszcze nie ma żadnego.
+        || (signedIn()
+            && request.auth.uid == uid
+            && request.resource.data.role == 'dispatcher'
+            && !exists(/databases/$(database)/documents/config/setup)
+            && existsAfter(/databases/$(database)/documents/config/setup));
+      allow update: if isDispatcher()
+        || (isActive()
+            && request.auth.uid == uid
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['name', 'phone', 'vehicle', 'fcmTokens']));
+      allow delete: if isDispatcher();
+    }
+
+    match /orders/{orderId} {
+      function isAssignedDriver(data) {
+        return isActive() && data.driverId == request.auth.uid;
+      }
+
+      allow read: if isDispatcher() || isAssignedDriver(resource.data);
+      allow create, delete: if isDispatcher();
+      allow update: if isDispatcher()
+        || (isAssignedDriver(resource.data)
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['status', 'updatedAt', 'lastMessage', 'lastMessageAt']));
+
+      match /messages/{messageId} {
+        function order() {
+          return get(/databases/$(database)/documents/orders/$(orderId)).data;
+        }
+        allow read: if isDispatcher() || isAssignedDriver(order());
+        allow create: if (isDispatcher() || isAssignedDriver(order()))
+          && request.resource.data.senderId == request.auth.uid;
+        allow update: if false;
+        allow delete: if isDispatcher();
+      }
+    }
+  }
+}
