@@ -30,6 +30,7 @@ object Repository {
     private val orders get() = db.collection("orders")
     private val setupDoc get() = db.document("config/setup")
     private val countersDoc get() = db.document("config/counters")
+    private val locations get() = db.collection("locations")
 
     // ---------- Logowanie ----------
 
@@ -50,6 +51,7 @@ object Repository {
     suspend fun signOut() {
         val uid = auth.currentUser?.uid
         if (uid != null) {
+            runCatching { locations.document(uid).delete().await() }
             runCatching {
                 val token = FirebaseMessaging.getInstance().token.await()
                 users.document(uid).update("fcmTokens", FieldValue.arrayRemove(token)).await()
@@ -121,9 +123,55 @@ object Repository {
         "vehicle" to vehicle.trim(),
         "role" to role.key,
         "active" to true,
+        "availability" to Availability.OFF.key,
         "fcmTokens" to emptyList<String>(),
         "createdAt" to FieldValue.serverTimestamp(),
     )
+
+    /**
+     * Kierowca zmienia dostępność. "Po pracy" usuwa jego pozycję z mapy dyspozytora.
+     */
+    suspend fun setAvailability(availability: Availability) {
+        val uid = auth.currentUser?.uid ?: return
+        users.document(uid).update("availability", availability.key).await()
+        if (!availability.onDuty) runCatching { locations.document(uid).delete().await() }
+    }
+
+    suspend fun saveMyLocation(name: String, lat: Double, lng: Double, accuracy: Float) {
+        val uid = auth.currentUser?.uid ?: return
+        locations.document(uid).set(
+            mapOf(
+                "name" to name,
+                "lat" to lat,
+                "lng" to lng,
+                "accuracy" to accuracy,
+                "updatedAt" to FieldValue.serverTimestamp(),
+            ),
+        ).await()
+    }
+
+    /** Pozycje wszystkich kierowców w pracy (tylko dla dyspozytora). */
+    fun driverLocations(): Flow<List<DriverLocation>> = callbackFlow {
+        val reg = locations.addSnapshotListener { snap, _ ->
+            if (snap != null) {
+                trySend(
+                    snap.documents.mapNotNull { d ->
+                        val lat = d.getDouble("lat") ?: return@mapNotNull null
+                        val lng = d.getDouble("lng") ?: return@mapNotNull null
+                        DriverLocation(
+                            uid = d.id,
+                            name = d.str("name"),
+                            lat = lat,
+                            lng = lng,
+                            accuracy = d.getDouble("accuracy")?.toFloat() ?: 0f,
+                            updatedAt = d.date("updatedAt"),
+                        )
+                    },
+                )
+            }
+        }
+        awaitClose { reg.remove() }
+    }
 
     suspend fun registerPushToken(token: String? = null) {
         val uid = auth.currentUser?.uid ?: return
@@ -202,6 +250,13 @@ object Repository {
             orders.document(orderId).collection("messages").document(),
             messageData(MessageType.SYSTEM, by, text = text),
         )
+        // Kierowca, który przyjmuje zlecenie, staje się "Zajęty", a po zakończeniu znów "Wolny".
+        if (!by.isDispatcher) {
+            val availability = if (status.isFinished) Availability.FREE else Availability.BUSY
+            if (availability != by.availability) {
+                batch.update(users.document(by.uid), "availability", availability.key)
+            }
+        }
         batch.commit().await()
     }
 
@@ -215,6 +270,8 @@ object Repository {
         "pickupAddress" to pickupAddress.trim(),
         "destinationAddress" to destinationAddress.trim(),
         "description" to description.trim(),
+        "pickupLat" to pickupLat,
+        "pickupLng" to pickupLng,
     )
 
     // ---------- Wiadomości: komentarze, zdjęcia, głosówki, dane ----------
@@ -251,13 +308,28 @@ object Repository {
         )
     }
 
+    suspend fun sendProtocol(orderId: String, sender: UserProfile, pdf: File, summary: List<DataField>) {
+        val url = upload(orderId, "protocols/${UUID.randomUUID()}.pdf", Uri.fromFile(pdf), "application/pdf")
+        postMessage(
+            orderId,
+            messageData(MessageType.PROTOCOL, sender, mediaUrl = url, fields = summary),
+            "📄 Protokół odbioru pojazdu",
+            extraOrderFields = mapOf("protocolUrl" to url),
+        )
+    }
+
     private suspend fun upload(orderId: String, path: String, uri: Uri, mime: String): String {
         val ref = storage.reference.child("orders/$orderId/$path")
         ref.putFile(uri, StorageMetadata.Builder().setContentType(mime).build()).await()
         return ref.downloadUrl.await().toString()
     }
 
-    private suspend fun postMessage(orderId: String, data: Map<String, Any?>, preview: String) {
+    private suspend fun postMessage(
+        orderId: String,
+        data: Map<String, Any?>,
+        preview: String,
+        extraOrderFields: Map<String, Any?> = emptyMap(),
+    ) {
         val orderRef = orders.document(orderId)
         db.batch()
             .set(orderRef.collection("messages").document(), data)
@@ -266,7 +338,7 @@ object Repository {
                 mapOf(
                     "lastMessage" to "${data["senderName"]}: $preview".take(200),
                     "lastMessageAt" to FieldValue.serverTimestamp(),
-                ),
+                ) + extraOrderFields,
             )
             .commit()
             .await()
@@ -306,6 +378,7 @@ object Repository {
         vehicle = str("vehicle"),
         role = Role.from(getString("role")),
         active = getBoolean("active") ?: true,
+        availability = Availability.from(getString("availability")),
     )
 
     private fun DocumentSnapshot.toOrder() = Order(
@@ -324,6 +397,9 @@ object Repository {
         createdAt = date("createdAt"),
         lastMessage = str("lastMessage"),
         lastMessageAt = date("lastMessageAt"),
+        pickupLat = getDouble("pickupLat"),
+        pickupLng = getDouble("pickupLng"),
+        protocolUrl = getString("protocolUrl"),
     )
 
     @Suppress("UNCHECKED_CAST")

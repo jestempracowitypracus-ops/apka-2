@@ -7,22 +7,32 @@ Aplikacja na Androida do przesyłania zleceń kierowcom pomocy drogowej.
 **Dyspozytor**
 - tworzy zlecenia (klient, telefon, pojazd, nr rej., skąd, dokąd, opis) i przydziela je kierowcy,
 - widzi wszystkie zlecenia (w toku i zakończone) oraz ich status na żywo,
+- widzi **mapę kierowców** (🗺️) z ich dostępnością i miejscami odbioru aktywnych zleceń,
+- przy wyborze kierowcy dostaje podpowiedź: najpierw wolni, posortowani po odległości od miejsca odbioru,
 - zakłada konta kierowców i innych dyspozytorów, może wyłączyć konto,
 - pisze komentarze, wysyła zdjęcia i głosówki w zleceniu, może zmienić status albo usunąć zlecenie.
 
 **Kierowca**
 - ma swój profil (imię, telefon, pojazd) i widzi tylko swoje zlecenia,
+- ustawia **dostępność**: Wolny / Zajęty / Po pracy. W pracy dyspozytor widzi go na mapie
+  (w telefonie widać stałe powiadomienie), „Po pracy” wyłącza udostępnianie lokalizacji.
+  Przyjęcie zlecenia ustawia „Zajęty”, zakończenie – „Wolny”,
 - dostaje powiadomienie o nowym zleceniu,
 - jednym przyciskiem zmienia status: Przyjęte → W drodze → Na miejscu → Holowanie → Zakończone,
 - dzwoni do klienta i włącza nawigację do miejsca zdarzenia,
 - wysyła zdjęcia (z aparatu albo z galerii), komentarze, **głosówki** i **dane dodatkowe**
   (VIN, przebieg, paliwo, uszkodzenia, nr szkody, pobrana kwota, forma płatności).
 
+**Protokół odbioru pojazdu** – kierowca zaznacza przebieg, paliwo, uszkodzenia (strefy + opis),
+wyposażenie i liczbę kluczyków, a klient podpisuje się palcem na ekranie. Aplikacja tworzy z tego PDF
+i dołącza go do zlecenia. Przy kończeniu zlecenia bez protokołu aplikacja o nim przypomina.
+
 Wszystko, co kierowca wyśle, dyspozytor widzi od razu w zleceniu i dostaje powiadomienie.
 
 ## Technologia
 
 - Android (Kotlin, Jetpack Compose), Android 8.0 lub nowszy.
+- Mapa: OpenStreetMap (osmdroid) – nie wymaga klucza API ani opłat.
 - Firebase: logowanie (Authentication), baza (Firestore), pliki (Storage), powiadomienia (Cloud Messaging + Cloud Functions).
 
 ## Uruchomienie – krok po kroku (jednorazowo)

@@ -34,3 +34,8 @@ fun navigateTo(context: Context, address: String) {
     val uri = Uri.parse("https://www.google.com/maps/dir/?api=1&destination=" + Uri.encode(address))
     context.startActivity(Intent(Intent.ACTION_VIEW, uri))
 }
+
+/** Otwiera adres (np. PDF protokołu) w przeglądarce lub przeglądarce PDF. */
+fun openUrl(context: Context, url: String) {
+    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+}

@@ -1,0 +1,9 @@
+<!-- Pinezka miejsca odbioru zlecenia -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="30dp"
+    android:height="38dp"
+    android:viewportWidth="30"
+    android:viewportHeight="38">
+    <path android:fillColor="#FF000000" android:pathData="M15,0C6.72,0 0,6.72 0,15c0,11.25 15,23 15,23s15,-11.75 15,-23C30,6.72 23.28,0 15,0z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M10,8h2v16h-2zM12,8h9l-2,3.5 2,3.5h-9z" />
+</vector>

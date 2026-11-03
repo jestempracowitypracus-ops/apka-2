@@ -48,8 +48,14 @@ service cloud.firestore {
         || (isActive()
             && request.auth.uid == uid
             && request.resource.data.diff(resource.data).affectedKeys()
-                 .hasOnly(['name', 'phone', 'vehicle', 'fcmTokens']));
+                 .hasOnly(['name', 'phone', 'vehicle', 'fcmTokens', 'availability']));
       allow delete: if isDispatcher();
+    }
+
+    // Ostatnia pozycja kierowcy w pracy. Zapisuje ją tylko sam kierowca, widzi dyspozytor.
+    match /locations/{uid} {
+      allow read: if isDispatcher() || (isActive() && request.auth.uid == uid);
+      allow write: if isActive() && request.auth.uid == uid;
     }
 
     match /orders/{orderId} {
@@ -62,7 +68,7 @@ service cloud.firestore {
       allow update: if isDispatcher()
         || (isAssignedDriver(resource.data)
             && request.resource.data.diff(resource.data).affectedKeys()
-                 .hasOnly(['status', 'updatedAt', 'lastMessage', 'lastMessageAt']));
+                 .hasOnly(['status', 'updatedAt', 'lastMessage', 'lastMessageAt', 'protocolUrl']));
 
       match /messages/{messageId} {
         function order() {

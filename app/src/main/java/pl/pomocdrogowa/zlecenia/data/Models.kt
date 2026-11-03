@@ -14,6 +14,22 @@ enum class Role(val label: String) {
     }
 }
 
+/** Dostępność kierowcy - ustawia ją kierowca, widzi dyspozytor. */
+enum class Availability(val label: String, val color: Color) {
+    FREE("Wolny", Color(0xFF43A047)),
+    BUSY("Zajęty", Color(0xFFF57C00)),
+    OFF("Po pracy", Color(0xFF9E9E9E));
+
+    val key: String get() = name.lowercase()
+
+    /** Czy kierowca jest w pracy - wtedy udostępnia lokalizację. */
+    val onDuty: Boolean get() = this != OFF
+
+    companion object {
+        fun from(value: String?): Availability = entries.firstOrNull { it.key == value } ?: OFF
+    }
+}
+
 data class UserProfile(
     val uid: String,
     val name: String,
@@ -22,6 +38,7 @@ data class UserProfile(
     val vehicle: String,
     val role: Role,
     val active: Boolean,
+    val availability: Availability = Availability.OFF,
 ) {
     val isDispatcher: Boolean get() = role == Role.DISPATCHER
 }
@@ -69,6 +86,9 @@ data class Order(
     val createdAt: Date?,
     val lastMessage: String,
     val lastMessageAt: Date?,
+    val pickupLat: Double? = null,
+    val pickupLng: Double? = null,
+    val protocolUrl: String? = null,
 )
 
 /** Pola formularza zlecenia (tworzenie i edycja). */
@@ -82,6 +102,8 @@ data class OrderDraft(
     val pickupAddress: String = "",
     val destinationAddress: String = "",
     val description: String = "",
+    val pickupLat: Double? = null,
+    val pickupLng: Double? = null,
 )
 
 fun Order.toDraft() = OrderDraft(
@@ -94,9 +116,35 @@ fun Order.toDraft() = OrderDraft(
     pickupAddress = pickupAddress,
     destinationAddress = destinationAddress,
     description = description,
+    pickupLat = pickupLat,
+    pickupLng = pickupLng,
 )
 
-enum class MessageType { TEXT, PHOTO, AUDIO, DATA, SYSTEM }
+enum class MessageType { TEXT, PHOTO, AUDIO, DATA, PROTOCOL, SYSTEM }
+
+/** Ostatnia znana pozycja kierowcy (kolekcja locations). */
+data class DriverLocation(
+    val uid: String,
+    val name: String,
+    val lat: Double,
+    val lng: Double,
+    val accuracy: Float,
+    val updatedAt: Date?,
+) {
+    /** Pozycja starsza niż 15 minut - kierowca mógł stracić zasięg. */
+    val isStale: Boolean
+        get() = updatedAt == null || System.currentTimeMillis() - updatedAt.time > 15 * 60_000
+}
+
+/** Odległość w km między dwoma punktami (wzór haversine). */
+fun distanceKm(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
+    val r = 6371.0
+    val dLat = Math.toRadians(lat2 - lat1)
+    val dLng = Math.toRadians(lng2 - lng1)
+    val a = Math.sin(dLat / 2).let { it * it } +
+        Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) * Math.sin(dLng / 2).let { it * it }
+    return 2 * r * Math.asin(Math.sqrt(a))
+}
 
 data class DataField(val label: String, val value: String)
 

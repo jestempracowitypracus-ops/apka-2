@@ -34,7 +34,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.platform.LocalContext
+import pl.pomocdrogowa.zlecenia.data.DriverLocation
+import pl.pomocdrogowa.zlecenia.data.distanceKm
+import pl.pomocdrogowa.zlecenia.util.geocode
 import kotlinx.coroutines.launch
 import pl.pomocdrogowa.zlecenia.data.OrderDraft
 import pl.pomocdrogowa.zlecenia.data.Repository
@@ -56,9 +64,21 @@ fun OrderEditScreen(me: UserProfile, orderId: String?, onBack: () -> Unit, onSav
     val usersFlow = remember { Repository.allUsers() }
     val users by usersFlow.collectAsState(initial = emptyList())
     val drivers = users.filter { it.active && it.role == Role.DRIVER }
+    val locationsFlow = remember { Repository.driverLocations() }
+    val locations by locationsFlow.collectAsState(initial = emptyList())
+    val context = LocalContext.current
 
     LaunchedEffect(orderId) {
         if (orderId != null) draft = Repository.order(orderId).first()?.toDraft() ?: OrderDraft()
+    }
+
+    // Współrzędne miejsca odbioru: do mapy i do podpowiedzi najbliższego kierowcy.
+    val pickupAddress = draft?.pickupAddress
+    LaunchedEffect(pickupAddress) {
+        if (pickupAddress == null) return@LaunchedEffect
+        delay(1000)
+        val point = geocode(context, pickupAddress)
+        draft = draft?.copy(pickupLat = point?.first, pickupLng = point?.second)
     }
 
     Scaffold(
@@ -90,6 +110,9 @@ fun OrderEditScreen(me: UserProfile, orderId: String?, onBack: () -> Unit, onSav
             Text("Kierowca", style = MaterialTheme.typography.titleSmall)
             DriverPicker(
                 drivers = drivers,
+                locations = locations.associateBy { it.uid },
+                pickupLat = d.pickupLat,
+                pickupLng = d.pickupLng,
                 selectedName = d.driverName,
                 onSelect = { u -> update { copy(driverId = u?.uid, driverName = u?.name.orEmpty()) } },
             )
@@ -146,8 +169,24 @@ fun OrderEditScreen(me: UserProfile, orderId: String?, onBack: () -> Unit, onSav
 }
 
 @Composable
-private fun DriverPicker(drivers: List<UserProfile>, selectedName: String, onSelect: (UserProfile?) -> Unit) {
+private fun DriverPicker(
+    drivers: List<UserProfile>,
+    locations: Map<String, DriverLocation>,
+    pickupLat: Double?,
+    pickupLng: Double?,
+    selectedName: String,
+    onSelect: (UserProfile?) -> Unit,
+) {
     var open by remember { mutableStateOf(false) }
+    fun distance(driver: UserProfile): Double? {
+        val loc = locations[driver.uid] ?: return null
+        if (pickupLat == null || pickupLng == null || !driver.availability.onDuty) return null
+        return distanceKm(loc.lat, loc.lng, pickupLat, pickupLng)
+    }
+    // Najpierw wolni, potem zajęci, na końcu po pracy; w grupie - najbliżsi miejsca odbioru.
+    val sorted = drivers.sortedWith(
+        compareBy<UserProfile> { it.availability.ordinal }.thenBy { distance(it) ?: Double.MAX_VALUE },
+    )
     Box {
         OutlinedButton(onClick = { open = true }, modifier = Modifier.fillMaxWidth()) {
             Text(selectedName.ifBlank { "Wybierz kierowcę" }, modifier = Modifier.weight(1f))
@@ -155,10 +194,19 @@ private fun DriverPicker(drivers: List<UserProfile>, selectedName: String, onSel
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             DropdownMenuItem(text = { Text("— bez kierowcy —") }, onClick = { onSelect(null); open = false })
-            drivers.forEach { driver ->
+            sorted.forEach { driver ->
+                val km = distance(driver)
                 DropdownMenuItem(
+                    leadingIcon = { Box(Modifier.size(10.dp).background(driver.availability.color, CircleShape)) },
                     text = {
-                        Text(driver.name + if (driver.vehicle.isNotBlank()) " (${driver.vehicle})" else "")
+                        Column {
+                            Text(driver.name + if (driver.vehicle.isNotBlank()) " (${driver.vehicle})" else "")
+                            Text(
+                                driver.availability.label + (km?.let { " · %.1f km od miejsca odbioru".format(it) } ?: ""),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     },
                     onClick = { onSelect(driver); open = false },
                 )

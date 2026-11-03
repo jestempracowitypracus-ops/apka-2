@@ -27,7 +27,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import androidx.compose.ui.platform.LocalContext
 import pl.pomocdrogowa.zlecenia.BuildConfig
+import pl.pomocdrogowa.zlecenia.LocationService
 import pl.pomocdrogowa.zlecenia.data.Repository
 import pl.pomocdrogowa.zlecenia.data.UserProfile
 import pl.pomocdrogowa.zlecenia.ui.common.Field
@@ -37,6 +39,7 @@ import pl.pomocdrogowa.zlecenia.ui.common.toUserMessage
 @Composable
 fun ProfileScreen(me: UserProfile, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var name by remember { mutableStateOf(me.name) }
     var phone by remember { mutableStateOf(me.phone) }
     var vehicle by remember { mutableStateOf(me.vehicle) }
@@ -86,7 +89,10 @@ fun ProfileScreen(me: UserProfile, onBack: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Zmień hasło") }
             OutlinedButton(
-                onClick = { scope.launch { Repository.signOut() } },
+                onClick = {
+                    LocationService.stop(context)
+                    scope.launch { Repository.signOut() }
+                },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Wyloguj") }
             Text(

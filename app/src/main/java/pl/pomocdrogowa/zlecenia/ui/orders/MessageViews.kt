@@ -43,7 +43,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
+import pl.pomocdrogowa.zlecenia.util.openUrl
 import kotlinx.coroutines.delay
 import pl.pomocdrogowa.zlecenia.data.Message
 import pl.pomocdrogowa.zlecenia.data.MessageType
@@ -98,6 +101,7 @@ fun MessageItem(message: Message, mine: Boolean, player: AudioPlayer, onPhoto: (
                     }
                     MessageType.AUDIO -> message.mediaUrl?.let { VoiceMessage(it, message.durationMs, player) }
                     MessageType.DATA -> DataFields(message)
+                    MessageType.PROTOCOL -> ProtocolMessage(message)
                     MessageType.SYSTEM -> Unit
                 }
                 Text(
@@ -108,6 +112,16 @@ fun MessageItem(message: Message, mine: Boolean, player: AudioPlayer, onPhoto: (
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun ProtocolMessage(message: Message) {
+    val context = LocalContext.current
+    Text("📄 Protokół odbioru pojazdu", style = MaterialTheme.typography.titleSmall)
+    message.fields.forEach { Text("${it.label}: ${it.value}", style = MaterialTheme.typography.bodyMedium) }
+    message.mediaUrl?.let { url ->
+        OutlinedButton(onClick = { openUrl(context, url) }) { Text("Otwórz PDF") }
     }
 }
 

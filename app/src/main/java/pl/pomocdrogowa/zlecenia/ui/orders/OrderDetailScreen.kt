@@ -16,6 +16,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Navigation
@@ -61,12 +63,19 @@ import pl.pomocdrogowa.zlecenia.util.AudioPlayer
 import pl.pomocdrogowa.zlecenia.util.dial
 import pl.pomocdrogowa.zlecenia.util.formatDate
 import pl.pomocdrogowa.zlecenia.util.navigateTo
+import pl.pomocdrogowa.zlecenia.util.openUrl
 
 private object Loading
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun OrderDetailScreen(me: UserProfile, orderId: String, onBack: () -> Unit, onEdit: () -> Unit) {
+fun OrderDetailScreen(
+    me: UserProfile,
+    orderId: String,
+    onBack: () -> Unit,
+    onEdit: () -> Unit,
+    onProtocol: () -> Unit,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val orderFlow = remember(orderId) { Repository.order(orderId) }
@@ -80,6 +89,7 @@ fun OrderDetailScreen(me: UserProfile, orderId: String, onBack: () -> Unit, onEd
     var menuOpen by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var confirmFinishWithoutProtocol by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
     // Przewijanie na dół przy nowej wiadomości.
@@ -152,7 +162,15 @@ fun OrderDetailScreen(me: UserProfile, orderId: String, onBack: () -> Unit, onEd
                             error = error,
                             onCall = { dial(context, current.clientPhone) },
                             onNavigate = { navigateTo(context, it) },
-                            onNextStatus = { setStatus(it) },
+                            onNextStatus = {
+                                if (it == OrderStatus.DONE && current.protocolUrl == null) {
+                                    confirmFinishWithoutProtocol = true
+                                } else {
+                                    setStatus(it)
+                                }
+                            },
+                            onProtocol = onProtocol,
+                            onOpenProtocol = { url -> openUrl(context, url) },
                         )
                     }
                     items(messages, key = { it.id }) { message ->
@@ -164,6 +182,26 @@ fun OrderDetailScreen(me: UserProfile, orderId: String, onBack: () -> Unit, onEd
     }
 
     photo?.let { PhotoViewer(it) { photo = null } }
+
+    if (confirmFinishWithoutProtocol) {
+        AlertDialog(
+            onDismissRequest = { confirmFinishWithoutProtocol = false },
+            title = { Text("Brak protokołu odbioru") },
+            text = { Text("Do tego zlecenia nie wypełniono protokołu z podpisem klienta. Wypełnić go teraz?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmFinishWithoutProtocol = false
+                    onProtocol()
+                }) { Text("Wypełnij protokół") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    confirmFinishWithoutProtocol = false
+                    setStatus(OrderStatus.DONE)
+                }) { Text("Zakończ bez protokołu") }
+            },
+        )
+    }
 
     if (confirmDelete) {
         AlertDialog(
@@ -193,6 +231,8 @@ private fun OrderHeader(
     onCall: () -> Unit,
     onNavigate: (String) -> Unit,
     onNextStatus: (OrderStatus) -> Unit,
+    onProtocol: () -> Unit,
+    onOpenProtocol: (String) -> Unit,
 ) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -228,6 +268,23 @@ private fun OrderHeader(
                     OutlinedButton(onClick = { onNavigate(target) }) {
                         Icon(Icons.Filled.Navigation, null)
                         Text(" Nawiguj")
+                    }
+                }
+            }
+
+            // Protokół odbioru: kierowca wypełnia go przy kliencie, obie strony mogą otworzyć PDF.
+            val protocolUrl = order.protocolUrl
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (protocolUrl != null) {
+                    OutlinedButton(onClick = { onOpenProtocol(protocolUrl) }) {
+                        Icon(Icons.Filled.Description, null)
+                        Text(" Protokół PDF")
+                    }
+                }
+                if (!me.isDispatcher && !order.status.isFinished) {
+                    OutlinedButton(onClick = onProtocol) {
+                        Icon(Icons.Filled.Draw, null)
+                        Text(if (protocolUrl == null) " Protokół odbioru" else " Nowy protokół")
                     }
                 }
             }

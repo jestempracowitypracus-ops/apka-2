@@ -92,6 +92,7 @@ exports.onMessageCreated = onDocumentCreated("orders/{orderId}/messages/{message
     PHOTO: "📷 Zdjęcie",
     AUDIO: "🎤 Wiadomość głosowa",
     DATA: "📋 Dane dodatkowe",
+    PROTOCOL: "📄 Protokół odbioru pojazdu",
     SYSTEM: msg.text,
   };
   const body = `${msg.senderName}: ${previews[msg.type] || "nowa wiadomość"}`;

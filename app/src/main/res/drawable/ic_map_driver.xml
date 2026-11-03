@@ -1,0 +1,9 @@
+<!-- Pinezka kierowcy (kolor nadawany w kodzie wg dostępności) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="36dp"
+    android:height="44dp"
+    android:viewportWidth="36"
+    android:viewportHeight="44">
+    <path android:fillColor="#FF000000" android:pathData="M18,0C8.06,0 0,8.06 0,18c0,13.5 18,26 18,26s18,-12.5 18,-26C36,8.06 27.94,0 18,0z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M8,20h10v-6h-3l-2,-3h-5zM18,18l9,-3v2.5l-8,3h-1zM7,20h22v2.5h-22zM11,25m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0M25,25m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0" />
+</vector>

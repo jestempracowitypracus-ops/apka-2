@@ -121,4 +121,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
 
     implementation("io.coil-kt:coil-compose:2.7.0")
+
+    // Lokalizacja kierowców i mapa (OpenStreetMap - bez klucza API)
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+    implementation("org.osmdroid:osmdroid-android:6.1.20")
 }

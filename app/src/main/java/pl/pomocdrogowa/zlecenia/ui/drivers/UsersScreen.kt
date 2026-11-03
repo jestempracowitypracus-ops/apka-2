@@ -88,7 +88,12 @@ fun UsersScreen(onBack: () -> Unit) {
                         Column(Modifier.weight(1f)) {
                             Text(user.name, fontWeight = FontWeight.SemiBold)
                             Text(
-                                listOf(user.role.label, user.vehicle, if (user.active) "" else "WYŁĄCZONE")
+                                listOf(
+                                    user.role.label,
+                                    if (user.role == Role.DRIVER) user.availability.label else "",
+                                    user.vehicle,
+                                    if (user.active) "" else "WYŁĄCZONE",
+                                )
                                     .filter { it.isNotBlank() }.joinToString(" · "),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (user.active) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,

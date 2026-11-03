@@ -2,6 +2,7 @@ package pl.pomocdrogowa.zlecenia.ui.orders
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -14,6 +15,21 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.Map
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.FilterChip
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import android.Manifest
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import kotlinx.coroutines.launch
+import pl.pomocdrogowa.zlecenia.LocationService
+import pl.pomocdrogowa.zlecenia.data.Availability
+import pl.pomocdrogowa.zlecenia.ui.common.toUserMessage
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -29,6 +45,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -53,6 +70,7 @@ fun OrdersScreen(
     onNew: () -> Unit,
     onUsers: () -> Unit,
     onProfile: () -> Unit,
+    onMap: () -> Unit,
 ) {
     val ordersFlow = remember(me.uid, me.role) { Repository.ordersFor(me) }
     val orders by ordersFlow.collectAsState(initial = null)
@@ -73,6 +91,7 @@ fun OrdersScreen(
                 },
                 actions = {
                     if (me.isDispatcher) {
+                        IconButton(onClick = onMap) { Icon(Icons.Filled.Map, "Mapa kierowców") }
                         IconButton(onClick = onUsers) { Icon(Icons.Filled.Group, "Kierowcy") }
                     }
                     IconButton(onClick = onProfile) { Icon(Icons.Filled.AccountCircle, "Mój profil") }
@@ -91,6 +110,7 @@ fun OrdersScreen(
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             val all = orders
+            if (!me.isDispatcher) AvailabilityBar(me)
             TabRow(selectedTabIndex = tab) {
                 Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("W toku") })
                 Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Zakończone") })
@@ -157,6 +177,55 @@ private fun OrderCard(order: Order, showDriver: Boolean, onClick: () -> Unit) {
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+        }
+    }
+}
+
+/** Kierowca ustawia, czy jest wolny, zajęty czy po pracy. W pracy udostępnia lokalizację. */
+@Composable
+private fun AvailabilityBar(me: UserProfile) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    fun set(value: Availability) {
+        scope.launch {
+            runCatching { Repository.setAvailability(value) }
+                .onFailure { Toast.makeText(context, it.toUserMessage(), Toast.LENGTH_LONG).show() }
+        }
+    }
+
+    var pending by remember { mutableStateOf<Availability?>(null) }
+    val locationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { result ->
+        if (result.values.none { it }) {
+            Toast.makeText(context, "Bez dostępu do lokalizacji dyspozytor nie zobaczy Cię na mapie", Toast.LENGTH_LONG).show()
+        }
+        pending?.let { set(it) }
+        pending = null
+    }
+
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Availability.entries.forEach { option ->
+            FilterChip(
+                selected = me.availability == option,
+                onClick = {
+                    if (option.onDuty && !LocationService.hasLocationPermission(context)) {
+                        pending = option
+                        locationPermission.launch(
+                            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
+                        )
+                    } else {
+                        set(option)
+                    }
+                },
+                leadingIcon = { Box(Modifier.size(10.dp).background(option.color, CircleShape)) },
+                label = { Text(option.label) },
+            )
         }
     }
 }

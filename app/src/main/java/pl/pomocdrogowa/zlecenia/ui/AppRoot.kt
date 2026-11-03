@@ -29,7 +29,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import kotlinx.coroutines.launch
+import androidx.compose.ui.platform.LocalContext
 import pl.pomocdrogowa.zlecenia.BuildConfig
+import pl.pomocdrogowa.zlecenia.LocationService
 import pl.pomocdrogowa.zlecenia.data.Repository
 import pl.pomocdrogowa.zlecenia.data.UserProfile
 import pl.pomocdrogowa.zlecenia.ui.auth.LoginScreen
@@ -38,6 +40,8 @@ import pl.pomocdrogowa.zlecenia.ui.drivers.UsersScreen
 import pl.pomocdrogowa.zlecenia.ui.orders.OrderDetailScreen
 import pl.pomocdrogowa.zlecenia.ui.orders.OrderEditScreen
 import pl.pomocdrogowa.zlecenia.ui.orders.OrdersScreen
+import pl.pomocdrogowa.zlecenia.ui.map.DriversMapScreen
+import pl.pomocdrogowa.zlecenia.ui.protocol.ProtocolScreen
 
 private object Loading
 
@@ -51,10 +55,14 @@ fun AppRoot(pendingOrderId: String?, onPendingOrderHandled: () -> Unit) {
         return
     }
 
+    val context = LocalContext.current
     val uid by remember { Repository.authState() }.collectAsState(initial = Loading)
     when (val current = uid) {
         Loading -> CenteredLoader()
-        null -> LoginScreen()
+        null -> {
+            LaunchedEffect(Unit) { LocationService.stop(context) }
+            LoginScreen()
+        }
         is String -> {
             val profileFlow = remember(current) { Repository.profile(current) }
             val profile by profileFlow.collectAsState(initial = Loading)
@@ -63,6 +71,7 @@ fun AppRoot(pendingOrderId: String?, onPendingOrderHandled: () -> Unit) {
                 is UserProfile -> if (p.active) {
                     LoggedIn(p, pendingOrderId, onPendingOrderHandled)
                 } else {
+                    LaunchedEffect(Unit) { LocationService.stop(context) }
                     BlockedAccount("Twoje konto zostało wyłączone przez dyspozytora.")
                 }
                 else -> BlockedAccount("Brak profilu dla tego konta. Poproś dyspozytora o założenie konta w aplikacji.")
@@ -74,6 +83,13 @@ fun AppRoot(pendingOrderId: String?, onPendingOrderHandled: () -> Unit) {
 @Composable
 private fun LoggedIn(me: UserProfile, pendingOrderId: String?, onPendingOrderHandled: () -> Unit) {
     val nav = rememberNavController()
+    val context = LocalContext.current
+
+    // Kierowca w pracy (Wolny / Zajęty) udostępnia lokalizację; "Po pracy" ją wyłącza.
+    LaunchedEffect(me.role, me.availability, me.name) {
+        if (!me.isDispatcher && me.availability.onDuty) LocationService.start(context, me.name)
+        else LocationService.stop(context)
+    }
 
     val notificationPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -99,6 +115,7 @@ private fun LoggedIn(me: UserProfile, pendingOrderId: String?, onPendingOrderHan
                 onNew = { nav.navigate("edit/new") },
                 onUsers = { nav.navigate("users") },
                 onProfile = { nav.navigate("profile") },
+                onMap = { nav.navigate("map") },
             )
         }
         composable("order/{id}", arguments = listOf(navArgument("id") { type = NavType.StringType })) {
@@ -108,6 +125,7 @@ private fun LoggedIn(me: UserProfile, pendingOrderId: String?, onPendingOrderHan
                 orderId = id,
                 onBack = { nav.popBackStack() },
                 onEdit = { nav.navigate("edit/$id") },
+                onProtocol = { nav.navigate("protocol/$id") },
             )
         }
         composable("edit/{id}", arguments = listOf(navArgument("id") { type = NavType.StringType })) {
@@ -121,6 +139,12 @@ private fun LoggedIn(me: UserProfile, pendingOrderId: String?, onPendingOrderHan
                     if (id == null) nav.navigate("order/$savedId")
                 },
             )
+        }
+        composable("protocol/{id}", arguments = listOf(navArgument("id") { type = NavType.StringType })) {
+            ProtocolScreen(me = me, orderId = it.arguments!!.getString("id")!!, onBack = { nav.popBackStack() })
+        }
+        composable("map") {
+            DriversMapScreen(onBack = { nav.popBackStack() }, onOpenOrder = { id -> nav.navigate("order/$id") })
         }
         composable("users") { UsersScreen(onBack = { nav.popBackStack() }) }
         composable("profile") { ProfileScreen(me = me, onBack = { nav.popBackStack() }) }
